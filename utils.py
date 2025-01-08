@@ -149,13 +149,10 @@ class dataset_class(Dataset):
 
         y = self.labels[ind]  # (num_labels,) array
 
-        data = torch.tensor(x)
-        label = torch.tensor(y)
+        data = torch.tensor(x, dtype=torch.float32)
+        label = torch.tensor(y, dtype=torch.float32)
 
         return data, label, ind
 
     def __len__(self):
         return len(self.labels)
-
-
-
