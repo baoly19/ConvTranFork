@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from art import *
+# from art import *
 # Import Project Modules -----------------------------------------------------------------------------------------------
 from utils import Setup, Initialization, Data_Loader, dataset_class, Data_Verifier
 from Models.model import model_factory, count_parameters
@@ -59,7 +59,7 @@ if __name__ == '__main__':
 
     for problem in os.listdir(config['data_path']):  # for loop on the all datasets in "data_dir" directory
         config['data_dir'] = os.path.join(config['data_path'], problem)
-        print(text2art(problem, font='small'))
+        # print(text2art(problem, font='small'))
         # ------------------------------------ Load Data ---------------------------------------------------------------
         logger.info("Loading Data ...")
         Data = Data_Loader(config)
