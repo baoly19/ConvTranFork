@@ -28,7 +28,14 @@ def Setup(args):
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
 
-    output_dir = os.path.join(output_dir, config['data_path'], initial_timestamp.strftime("%Y-%m-%d_%H-%M"))
+    if 'kaggle/input' in config['data_path']:
+        output_dir = os.path.join(
+            output_dir,
+            initial_timestamp.strftime("%Y-%m-%d_%H-%M"),
+        )
+    else:
+        output_dir = os.path.join(output_dir, config['data_path'], initial_timestamp.strftime("%Y-%m-%d_%H-%M"))
+    
     config['output_dir'] = output_dir
     config['save_dir'] = os.path.join(output_dir, 'checkpoints')
     config['pred_dir'] = os.path.join(output_dir, 'predictions')
