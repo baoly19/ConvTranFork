@@ -3,6 +3,7 @@ import argparse
 import logging
 import pandas as pd
 import numpy as np
+import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 # from art import *
@@ -58,6 +59,7 @@ if __name__ == '__main__':
     All_Results = ['Datasets', 'ConvTran']  # Use to store the accuracy of ConvTran in e.g "Result/Datasets/UEA"
 
     for problem in os.listdir(config['data_path']):  # for loop on the all datasets in "data_dir" directory
+        print("Train on problem:", problem)
         config['data_dir'] = os.path.join(config['data_path'], problem)
         # print(text2art(problem, font='small'))
         # ------------------------------------ Load Data ---------------------------------------------------------------
@@ -112,6 +114,8 @@ if __name__ == '__main__':
         problem_df.to_csv(os.path.join(config['pred_dir'] + '/' + problem + '.csv'))
 
         All_Results = np.vstack((All_Results, dic_position_results))
+        del model, train_dataset, val_dataset, test_dataset
+        torch.cuda.empty_cache()
 
     All_Results_df = pd.DataFrame(All_Results)
     All_Results_df.to_csv(os.path.join(config['output_dir'], 'ConvTran_Results.csv'))
