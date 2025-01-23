@@ -1,3 +1,9 @@
 __pycache__/
-Dataset/__pycache__/
-Models/__pycache__/
+.DS_Store
+
+__pycache__/
+*.py[cod]
+*$py.class
+summary/
+.DS_Store
+Results
