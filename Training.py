@@ -105,6 +105,8 @@ class SupervisedTrainer(BaseTrainer):
             with torch.no_grad():
                 total_samples += len(loss)
                 epoch_loss += batch_loss.item()  # add total loss of batch
+            
+            torch.cuda.empty_cache()
 
         epoch_loss = epoch_loss / total_samples  # average loss per sample for whole epoch
         self.epoch_metrics['epoch'] = epoch_num
