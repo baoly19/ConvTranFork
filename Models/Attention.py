@@ -23,7 +23,6 @@ class Attention(nn.Module):
         v = self.value(x).reshape(batch_size, seq_len, self.num_heads, -1).transpose(1, 2)
         q = self.query(x).reshape(batch_size, seq_len, self.num_heads, -1).transpose(1, 2)
         # k,v,q shape = (batch_size, num_heads, seq_len, d_head)
-
         attn = torch.matmul(q, k) * self.scale
         # attn shape (seq_len, seq_len)
         attn = nn.functional.softmax(attn, dim=-1)
@@ -67,11 +66,10 @@ class Attention_Rel_Scl(nn.Module):
 
     def forward(self, x):
         batch_size, seq_len, _ = x.shape
-        k = self.key(x).reshape(batch_size, seq_len, self.num_heads, -1).permute(0, 2, 3, 1)
+        k = self.key(x).reshape(batch_size, seq_len, self.num_heads, -1).permute(0, 2, 3, 1).half()
         v = self.value(x).reshape(batch_size, seq_len, self.num_heads, -1).transpose(1, 2)
-        q = self.query(x).reshape(batch_size, seq_len, self.num_heads, -1).transpose(1, 2)
+        q = self.query(x).reshape(batch_size, seq_len, self.num_heads, -1).transpose(1, 2).half()
         # k,v,q shape = (batch_size, num_heads, seq_len, d_head)
-
         attn = torch.matmul(q, k) * self.scale
         # attn shape (seq_len, seq_len)
         attn = nn.functional.softmax(attn, dim=-1)
