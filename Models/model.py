@@ -96,26 +96,13 @@ class ConvTran(nn.Module):
         self.Rel_pos_encode = config["Rel_pos_encode"]
 
         # Use more memory-efficient group convolutions
-        groups = 4  # Adjust based on your needs
-        self.embed_layer = nn.Sequential(
-            nn.Conv2d(
-                1, emb_size * 4, kernel_size=[1, 8], padding="same", groups=groups
-            ),
-            nn.BatchNorm2d(emb_size * 4),
-            nn.GELU(),
-        )
+        self.embed_layer = nn.Sequential(nn.Conv2d(1, emb_size*4, kernel_size=[1, 8], padding='same'),
+                                         nn.BatchNorm2d(emb_size*4),
+                                         nn.GELU())
 
-        self.embed_layer2 = nn.Sequential(
-            nn.Conv2d(
-                emb_size * 4,
-                emb_size,
-                kernel_size=[channel_size, 1],
-                padding="valid",
-                groups=groups,
-            ),
-            nn.BatchNorm2d(emb_size),
-            nn.GELU(),
-        )
+        self.embed_layer2 = nn.Sequential(nn.Conv2d(emb_size*4, emb_size, kernel_size=[channel_size, 1], padding='valid'),
+                                          nn.BatchNorm2d(emb_size),
+                                          nn.GELU())
 
         # Initialize position encodings with memory efficiency in mind
         if self.Fix_pos_encode == "tAPE":
