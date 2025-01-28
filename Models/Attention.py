@@ -129,9 +129,6 @@ class Attention_Rel_Scl(nn.Module):
                 del attn
                 torch.cuda.empty_cache()
                 gc.collect()
-        del attn
-        torch.cuda.empty_cache()
-        gc.collect()
         # Concatenate results from all GPUs
         output = torch.cat(results, dim=0)  # Combine along the batch dimension
         del results
