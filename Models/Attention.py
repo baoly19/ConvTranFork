@@ -109,7 +109,6 @@ class Attention_Rel_Scl(nn.Module):
                     self.key(x_split)
                     .reshape(x_split.size(0), seq_len, self.num_heads, -1)
                     .permute(0, 2, 3, 1)
-                    .half()
                 )
                 v = (
                     self.value(x_split)
@@ -120,7 +119,6 @@ class Attention_Rel_Scl(nn.Module):
                     self.query(x_split)
                     .reshape(x_split.size(0), seq_len, self.num_heads, -1)
                     .transpose(1, 2)
-                    .half()
                 )
 
                 # Compute attention
