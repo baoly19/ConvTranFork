@@ -65,9 +65,9 @@ class Attention_Rel_Scl(nn.Module):
         self.value = nn.Linear(emb_size, emb_size, bias=False)
         self.query = nn.Linear(emb_size, emb_size, bias=False)
 
-        self.relative_bias_table = nn.Parameter(
-            torch.zeros((2 * self.seq_len - 1), num_heads)
-        )
+        # self.relative_bias_table = nn.Parameter(
+        #     torch.zeros((2 * self.seq_len - 1), num_heads)
+        # )
         coords = torch.meshgrid((torch.arange(1), torch.arange(self.seq_len)))
         coords = torch.flatten(torch.stack(coords), 1)
         relative_coords = coords[:, :, None] - coords[:, None, :]
@@ -79,51 +79,77 @@ class Attention_Rel_Scl(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.to_out = nn.LayerNorm(emb_size)
 
+        # Efficient initialization of relative bias table
+        self.relative_bias_table = nn.Parameter(
+            torch.zeros((2 * seq_len - 1, num_heads))
+        )
+
+        # Precompute relative indices
+        self.relative_index = self.compute_relative_indices()
+
+    def compute_relative_indices(self):
+        # Precomputes relative indices for the bias table
+        index = torch.arange(self.seq_len)
+        relative_index = index[:, None] - index[None, :] + self.seq_len - 1
+        return relative_index.view(-1)  # Flatten for efficiency
+
     def forward(self, x):
         # Assume `self.device` is set up for multiple GPUs (e.g., `cuda:0` and `cuda:1`)
 
         batch_size, seq_len, _ = x.shape
 
         # Scatter input across GPUs
-        x_splits = torch.chunk(x, 2, dim=0)  # Split along batch dimension (dim=0)
+        x_splits = torch.chunk(x, 5, dim=0)  # Split along batch dimension (dim=0)
         print("N x+splits:", len(x_splits))
         # Perform computation on each GPU
         results = []
         for i, x_split in enumerate(x_splits):
-            with torch.cuda.device(i):  # Switch to the appropriate GPU
-                k = (
-                    self.key(x_split)
-                    .reshape(x_split.size(0), seq_len, self.num_heads, -1)
-                    .permute(0, 2, 3, 1)
-                    .half()
-                )
-                v = (
-                    self.value(x_split)
-                    .reshape(x_split.size(0), seq_len, self.num_heads, -1)
-                    .transpose(1, 2)
-                )
-                q = (
-                    self.query(x_split)
-                    .reshape(x_split.size(0), seq_len, self.num_heads, -1)
-                    .transpose(1, 2)
-                    .half()
-                )
+            # with torch.mps.device(i):  # Switch to the appropriate GPU
+            k = (
+                self.key(x_split)
+                .reshape(x_split.size(0), seq_len, self.num_heads, -1)
+                .permute(0, 2, 3, 1)
+                .half()
+            )
+            v = (
+                self.value(x_split)
+                .reshape(x_split.size(0), seq_len, self.num_heads, -1)
+                .transpose(1, 2)
+            )
+            q = (
+                self.query(x_split)
+                .reshape(x_split.size(0), seq_len, self.num_heads, -1)
+                .transpose(1, 2)
+                .half()
+            )
 
-                # Compute attention
-                attn = torch.matmul(q, k) * self.scale
-                attn = F.softmax(attn, dim=-1)
+            # Compute attention
+            attn = torch.matmul(q, k) * self.scale
+            attn = F.softmax(attn, dim=-1)
+            print(torch.mps.current_allocated_memory())
+            # Add relative bias
+            # self.relative_bias_table = nn.Parameter(
+            #     torch.zeros((2 * self.seq_len - 1), num_heads)
+            # )
+            # relative_bias = self.relative_bias_table.gather(
+            #     0, self.relative_index.repeat(1, self.num_heads)
+            # )
+            # relative_bias = rearrange(
+            #     relative_bias, "(h w) c -> 1 c h w", h=1 * self.seq_len, w=1 * self.seq_len
+            # )
+            
+            # Gather the relative bias using precomputed indices
+            indices = self.relative_index.unsqueeze(-1).expand(-1, self.num_heads)
+            relative_bias = self.relative_bias_table.gather(0, indices)
 
-                # Add relative bias
-                relative_bias = self.relative_bias_table.gather(
-                    0, self.relative_index.repeat(1, self.num_heads)
-                )
-                relative_bias = rearrange(
-                    relative_bias, "(h w) c -> 1 c h w", h=1 * self.seq_len, w=1 * self.seq_len
-                )
-                attn = attn + relative_bias
+            # Reshape to desired format
+            relative_bias = relative_bias.view(1, self.num_heads, self.seq_len, self.seq_len)
+            print(torch.mps.current_allocated_memory())
 
-                # Store the result on GPU i
-                results.append(attn.matmul(v))
+            attn += relative_bias
+
+            # Store the result on GPU i
+            results.append(attn.matmul(v))
 
         # Concatenate results from all GPUs
         output = torch.cat(results, dim=0)  # Combine along the batch dimension
