@@ -103,7 +103,7 @@ if __name__ == '__main__':
         logger.info("Model:\n{}".format(model))
         logger.info("Total number of parameters: {}".format(count_parameters(model)))
         # -------------------------------------------- Model Initialization ------------------------------------
-        optim_class = get_optimizer("RAdam")
+        optim_class = get_optimizer("Adam")
         config['optimizer'] = optim_class(model.parameters(), lr=config['lr'], weight_decay=0)
         config['loss_module'] = get_loss_module()
         save_path = os.path.join(config['save_dir'], problem + 'model_{}.pth'.format('last'))
