@@ -140,8 +140,7 @@ class ConvTran(nn.Module):
         if self.Fix_pos_encode != 'None':
             x_src_pos = self.Fix_Position(x_src)
             torch.cuda.empty_cache()
-            attL = self.attention_layer(x_src_pos)
-            att = x_src + attL
+            att = x_src + self.attention_layer(x_src_pos)
         else:
             att = x_src + self.attention_layer(x_src)
         att = self.LayerNorm(att)
