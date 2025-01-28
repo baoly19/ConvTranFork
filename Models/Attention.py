@@ -57,23 +57,26 @@ class Attention(nn.Module):
         return out
 
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from einops import rearrange
+
+
 class Attention_Rel_Scl(nn.Module):
     def __init__(self, emb_size, num_heads, seq_len, dropout):
         super().__init__()
         self.seq_len = seq_len
         self.num_heads = num_heads
-        self.head_dim = emb_size // num_heads
-        self.scale = self.head_dim**-0.5
+        self.scale = emb_size**-0.5
 
-        # Combine QKV projections into a single linear layer
-        self.qkv = nn.Linear(emb_size, emb_size * 3, bias=False)
+        self.key = nn.Linear(emb_size, emb_size, bias=False)
+        self.value = nn.Linear(emb_size, emb_size, bias=False)
+        self.query = nn.Linear(emb_size, emb_size, bias=False)
 
-        # Initialize relative position bias table
         self.relative_bias_table = nn.Parameter(
-            torch.zeros((2 * seq_len - 1), num_heads)
+            torch.zeros((2 * self.seq_len - 1), num_heads)
         )
-
-        # Pre-compute relative position indices
         coords = torch.meshgrid((torch.arange(1), torch.arange(self.seq_len)))
         coords = torch.flatten(torch.stack(coords), 1)
         relative_coords = coords[:, :, None] - coords[:, None, :]
@@ -88,55 +91,60 @@ class Attention_Rel_Scl(nn.Module):
     def forward(self, x):
         batch_size, seq_len, _ = x.shape
 
-        # Compute Q, K, V in a single matrix multiplication
-        qkv = self.qkv(x).chunk(3, dim=-1)
-        q, k, v = map(
-            lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.num_heads), qkv
+        # Use FP16 for key, query, and value to save memory
+        k = (
+            self.key(x)
+            .reshape(batch_size, seq_len, self.num_heads, -1)
+            .permute(0, 2, 3, 1)
+            .half()
+        )
+        v = (
+            self.value(x)
+            .reshape(batch_size, seq_len, self.num_heads, -1)
+            .transpose(1, 2)
+            .half()
+        )
+        q = (
+            self.query(x)
+            .reshape(batch_size, seq_len, self.num_heads, -1)
+            .transpose(1, 2)
+            .half()
         )
 
-        # Scale query
-        q = q * self.scale
+        # Chunked matrix multiplication to reduce memory usage
+        attn = torch.zeros(
+            (batch_size, self.num_heads, seq_len, seq_len),
+            device=x.device,
+            dtype=torch.float16,
+        )
+        chunk_size = 64  # Adjust based on memory constraints
+        for i in range(0, seq_len, chunk_size):
+            end_i = i + chunk_size
+            q_chunk = q[:, :, i:end_i, :]
+            attn_chunk = torch.matmul(q_chunk, k) * self.scale
+            attn[:, :, i:end_i, :] = attn_chunk
 
-        # Compute attention scores with improved memory efficiency
-        with torch.cuda.amp.autocast(enabled=True):
-            # Compute attention scores in chunks if sequence length is large
-            chunk_size = 128  # Adjust based on available GPU memory
-            attn_chunks = []
+        attn = F.softmax(attn, dim=-1)
 
-            for i in range(0, seq_len, chunk_size):
-                end_idx = min(i + chunk_size, seq_len)
-                q_chunk = q[:, :, i:end_idx]
+        # Efficient relative bias addition
+        relative_bias = self.relative_bias_table.gather(
+            0, self.relative_index.repeat(1, self.num_heads)
+        )
+        relative_bias = rearrange(
+            relative_bias, "(h w) c -> 1 c h w", h=seq_len, w=seq_len
+        ).half()
+        attn = attn + relative_bias
 
-                # Compute attention scores for the current chunk
-                attn_chunk = torch.matmul(q_chunk, k.transpose(-2, -1))
+        # Chunked output computation
+        out = torch.zeros_like(v, dtype=torch.float16)
+        for i in range(0, seq_len, chunk_size):
+            end_i = i + chunk_size
+            attn_chunk = attn[:, :, i:end_i, :]
+            out_chunk = torch.matmul(attn_chunk, v)
+            out[:, :, i:end_i, :] = out_chunk
 
-                # Add relative position bias for the current chunk
-                # Add relative position bias for the current chunk
-                rel_pos = self.relative_index[i:end_idx, :]
-                relative_bias = self.relative_bias_table[
-                    rel_pos
-                ]  # [chunk_size, seq_len, num_heads]
-                relative_bias = relative_bias.permute(
-                    2, 0, 1
-                )  # [num_heads, chunk_size, seq_len]
-                attn_chunk = attn_chunk + relative_bias.unsqueeze(0)
-
-                attn_chunks.append(attn_chunk)
-
-            # Concatenate chunks
-            attn = torch.cat(attn_chunks, dim=2)
-
-            # Apply softmax
-            attn = F.softmax(attn, dim=-1)
-            attn = self.dropout(attn)
-
-            # Compute output
-            out = torch.matmul(attn, v)
-
-        # Reshape and apply output transformation
-        out = rearrange(out, "b h n d -> b n (h d)")
-        out = self.to_out(out)
-
+        out = out.transpose(1, 2).reshape(batch_size, seq_len, -1)
+        out = self.to_out(out.float())  # Convert back to FP32 for LayerNorm
         return out
 
 
