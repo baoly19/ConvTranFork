@@ -1,3 +1,4 @@
+import gc
 import torch
 import torch.nn as nn
 from einops import rearrange
@@ -121,14 +122,18 @@ class Attention_Rel_Scl(nn.Module):
                     relative_bias = rearrange(
                         relative_bias, "(h w) c -> 1 c h w", h=1 * self.seq_len, w=1 * self.seq_len
                     )
-                    attn = attn + relative_bias
+                    attn += relative_bias
 
                     # Store the result on GPU i
                     results.append(attn.matmul(v))
+                    del attn
+                    torch.cuda.empty_cache()
+                    gc.collect()
 
         # Concatenate results from all GPUs
         output = torch.cat(results, dim=0)  # Combine along the batch dimension
-
+        del output
+        torch.cuda.empty_cache()
         # # distance_pd = pd.DataFrame(relative_bias[0,0,:,:].cpu().detach().numpy())
         # # distance_pd.to_csv('scalar_position_distance.csv')
 
