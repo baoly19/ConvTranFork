@@ -86,7 +86,7 @@ class Attention_Rel_Scl(nn.Module):
 
         # Scatter input across GPUs
         x_splits = torch.chunk(x, 2, dim=0)  # Split along batch dimension (dim=0)
-
+        print("N x+splits:", len(x_splits))
         # Perform computation on each GPU
         results = []
         for i, x_split in enumerate(x_splits):
