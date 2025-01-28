@@ -117,9 +117,16 @@ class Attention_Rel_Scl(nn.Module):
                 relative_bias = rearrange(
                     relative_bias, "(h w) c -> 1 c h w", h=1 * self.seq_len, w=1 * self.seq_len
                 )
-                attn = attn + relative_bias
-                attn = F.softmax(attn, dim=-1)
+                
+                # Add relative bias in chunks
+                chunk_size = 1024  # Tune based on your GPU memory
+                for start in range(0, attn.size(-1), chunk_size):
+                    end = min(start + chunk_size, attn.size(-1))
+                    attn[..., start:end] += relative_bias[..., start:end]
 
+                # Apply softmax
+                attn = F.softmax(attn, dim=-1)
+                
 
                 # Store the result on GPU i
                 results.append(attn.matmul(v))
