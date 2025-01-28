@@ -132,25 +132,39 @@ class ConvTran(nn.Module):
         self.out = nn.Linear(emb_size, num_classes)
 
     def forward(self, x):
-        print("Start fowarding")
+        print("Start forwarding")
+        
+        # Step 1: Unsqueeze and embed
         x = x.unsqueeze(1)
         x_src = self.embed_layer(x)
         x_src = self.embed_layer2(x_src).squeeze(2)
         x_src = x_src.permute(0, 2, 1)
+        
+        # Step 2: Position encoding and attention
         if self.Fix_pos_encode != 'None':
             x_src_pos = self.Fix_Position(x_src)
             att = x_src + self.attention_layer(x_src_pos)
+            del x_src_pos  # Free memory
         else:
             att = x_src + self.attention_layer(x_src)
+        del x_src  # Free memory
+        
+        # Step 3: Layer normalization and feedforward
         att = self.LayerNorm(att)
         out = att + self.FeedForward(att)
+        del att  # Free memory
+        
+        # Step 4: Final layer normalization and output
         out = self.LayerNorm2(out)
         out = out.permute(0, 2, 1)
         out = self.gap(out)
         out = self.flatten(out)
         out = self.out(out)
+        
+        # Clear GPU cache
         torch.cuda.empty_cache()
-        print("End fowarding")
+        
+        print("End forwarding")
         return out
 
 
