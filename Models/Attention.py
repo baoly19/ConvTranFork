@@ -109,7 +109,6 @@ class Attention_Rel_Scl(nn.Module):
 
                 # Compute attention
                 attn = torch.matmul(q, k) * self.scale
-                attn = F.softmax(attn, dim=-1)
 
                 # Add relative bias
                 relative_bias = self.relative_bias_table.gather(
@@ -119,6 +118,8 @@ class Attention_Rel_Scl(nn.Module):
                     relative_bias, "(h w) c -> 1 c h w", h=1 * self.seq_len, w=1 * self.seq_len
                 )
                 attn += relative_bias
+                attn = F.softmax(attn, dim=-1)
+
 
                 # Store the result on GPU i
                 results.append(attn.matmul(v))
