@@ -30,9 +30,27 @@ parser.add_argument('--print_interval', type=int, default=10, help='Print batch 
 parser.add_argument('--Net_Type', default=['C-T'], choices={'T', 'C-T'}, help="Network Architecture. Convolution (C)"
                                                                               "Transformers (T)")
 # Transformers Parameters ------------------------------
-parser.add_argument('--emb_size', type=int, default=16, help='Internal dimension of transformer embeddings')
-parser.add_argument('--dim_ff', type=int, default=256, help='Dimension of dense feedforward part of transformer layer')
-parser.add_argument('--num_heads', type=int, default=8, help='Number of multi-headed attention heads')
+parser.add_argument('--emb_size', type=int, default=8, help='Internal dimension of transformer embeddings')
+parser.add_argument('--dim_ff', type=int, default=64, help='Dimension of dense feedforward part of transformer layer')
+parser.add_argument('--num_heads', type=int, default=2, help='Number of multi-headed attention heads')
+
+# parser.add_argument(
+#     "--emb_size",
+#     type=int,
+#     default=16,
+#     help="Internal dimension of transformer embeddings",
+# )
+# parser.add_argument(
+#     "--dim_ff",
+#     type=int,
+#     default=256,
+#     help="Dimension of dense feedforward part of transformer layer",
+# )
+# parser.add_argument(
+#     "--num_heads", type=int, default=8, help="Number of multi-headed attention heads"
+# )
+
+
 parser.add_argument('--Fix_pos_encode', choices={'tAPE', 'Learn', 'None'}, default='tAPE',
                     help='Fix Position Embedding')
 parser.add_argument('--Rel_pos_encode', choices={'eRPE', 'Vector', 'None'}, default='eRPE',
@@ -80,6 +98,8 @@ if __name__ == '__main__':
         config['Data_shape'] = Data['train_data'].shape
         config['num_labels'] = int(max(Data['train_label']))+1
         model = model_factory(config)
+        model = torch.nn.DataParallel(model).to(device)
+
         logger.info("Model:\n{}".format(model))
         logger.info("Total number of parameters: {}".format(count_parameters(model)))
         # -------------------------------------------- Model Initialization ------------------------------------
