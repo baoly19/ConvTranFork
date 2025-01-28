@@ -89,16 +89,17 @@ class SupervisedTrainer(BaseTrainer):
 
             X, targets, IDs = batch
             targets = targets.to(self.device)
-            predictions = self.model(X.half().to(self.device))
+            predictions = self.model(X.to(self.device))
 
-            loss = self.loss_module(predictions.float(), targets)  # (batch_size,) loss for each sample in the batch
+            loss = self.loss_module(predictions, targets)  # (batch_size,) loss for each sample in the batch
             batch_loss = torch.sum(loss)
             mean_loss = batch_loss / len(loss)  # mean loss (over samples) used for optimization
-
-            if self.l2_reg:
-                total_loss = mean_loss + self.l2_reg * l2_reg_loss(self.model)
-            else:
-                total_loss = mean_loss
+            total_loss = mean_loss
+            # if self.l2_reg:
+                
+            #     total_loss = mean_loss + self.l2_reg * l2_reg_loss(self.model)
+            # else:
+            #     total_loss = mean_loss
 
             # Zero gradients, perform a backward pass, and update the weights.
             self.optimizer.zero_grad()
