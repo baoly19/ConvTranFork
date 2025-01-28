@@ -132,6 +132,7 @@ class ConvTran(nn.Module):
         self.out = nn.Linear(emb_size, num_classes)
 
     def forward(self, x):
+        print("Start fowarding")
         x = x.unsqueeze(1)
         x_src = self.embed_layer(x)
         x_src = self.embed_layer2(x_src).squeeze(2)
@@ -150,6 +151,7 @@ class ConvTran(nn.Module):
         out = self.gap(out)
         out = self.flatten(out)
         out = self.out(out)
+        print("End fowarding")
         return out
 
 
