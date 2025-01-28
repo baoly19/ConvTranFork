@@ -122,11 +122,15 @@ class Attention_Rel_Scl(nn.Module):
                 relative_bias = rearrange(
                     relative_bias, "(h w) c -> 1 c h w", h=1 * self.seq_len, w=1 * self.seq_len
                 )
-                attn += relative_bias
+                # Clone `attn` before modifying it inplace
+                attn_clone = attn.clone()  # Clone to preserve computation graph
+                attn_clone += relative_bias  # Safe inplace modification
 
                 # Store the result on GPU i
-                results.append(attn.matmul(v))
-                del attn, relative_bias
+                results.append(attn_clone.matmul(v))
+
+                # Clean up intermediate tensors
+                del attn, attn_clone, relative_bias
                 torch.cuda.empty_cache()
                 gc.collect()
         # Concatenate results from all GPUs
