@@ -132,7 +132,7 @@ class Attention_Rel_Scl(nn.Module):
 
         # Concatenate results from all GPUs
         output = torch.cat(results, dim=0)  # Combine along the batch dimension
-        del output
+        del results
         torch.cuda.empty_cache()
         # # distance_pd = pd.DataFrame(relative_bias[0,0,:,:].cpu().detach().numpy())
         # # distance_pd.to_csv('scalar_position_distance.csv')
