@@ -126,7 +126,7 @@ class Attention_Rel_Scl(nn.Module):
 
                 # Store the result on GPU i
                 results.append(attn.matmul(v))
-                del attn
+                del attn, relative_bias
                 torch.cuda.empty_cache()
                 gc.collect()
         # Concatenate results from all GPUs
