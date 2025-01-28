@@ -108,7 +108,7 @@ if __name__ == '__main__':
         config['loss_module'] = get_loss_module()
         save_path = os.path.join(config['save_dir'], problem + 'model_{}.pth'.format('last'))
         tensorboard_writer = SummaryWriter('summary')
-        model.to(device)
+        # model.to(device)
         # ---------------------------------------------- Training The Model ------------------------------------
         logger.info('Starting training...')
         trainer = SupervisedTrainer(model, train_loader, device, config['loss_module'], config['optimizer'], l2_reg=0,
