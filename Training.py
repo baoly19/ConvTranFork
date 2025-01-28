@@ -6,9 +6,21 @@ from collections import OrderedDict
 import time
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
-import torch_xla as xla
+# import torch_xla as xla
 from Models.loss import l2_reg_loss
 from Models import utils, analysis
+import torch
+import torch.nn as nn
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from einops import rearrange
+import os
+
+import torch
+import torch.nn as nn
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel
+from torch.utils.data.distributed import DistributedSampler
 
 logger = logging.getLogger('__main__')
 
@@ -105,7 +117,7 @@ class SupervisedTrainer(BaseTrainer):
             with torch.no_grad():
                 total_samples += len(loss)
                 epoch_loss += batch_loss.item()  # add total loss of batch
-            
+
             # torch.cuda.empty_cache()
 
         epoch_loss = epoch_loss / total_samples  # average loss per sample for whole epoch
