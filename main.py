@@ -98,7 +98,7 @@ if __name__ == '__main__':
         config['Data_shape'] = Data['train_data'].shape
         config['num_labels'] = int(max(Data['train_label']))+1
         model = model_factory(config)
-        model = torch.nn.DataParallel(model).to(device)
+        model = torch.nn.DataParallel(model, device_ids=[0, 1])
 
         logger.info("Model:\n{}".format(model))
         logger.info("Total number of parameters: {}".format(count_parameters(model)))
