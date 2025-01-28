@@ -87,85 +87,114 @@ class Transformer(nn.Module):
 class ConvTran(nn.Module):
     def __init__(self, config, num_classes):
         super().__init__()
-        # Parameters Initialization -----------------------------------------------
-        channel_size, seq_len = config['Data_shape'][1], config['Data_shape'][2]
-        emb_size = config['emb_size']
-        num_heads = config['num_heads']
-        dim_ff = config['dim_ff']
-        self.Fix_pos_encode = config['Fix_pos_encode']
-        self.Rel_pos_encode = config['Rel_pos_encode']
-        # Embedding Layer -----------------------------------------------------------
-        self.embed_layer = nn.Sequential(nn.Conv2d(1, emb_size*4, kernel_size=[1, 8], padding='same'),
-                                         nn.BatchNorm2d(emb_size*4),
-                                         nn.GELU()).half()
+        # Parameters Initialization
+        channel_size, seq_len = config["Data_shape"][1], config["Data_shape"][2]
+        emb_size = config["emb_size"]
+        num_heads = config["num_heads"]
+        dim_ff = config["dim_ff"]
+        self.Fix_pos_encode = config["Fix_pos_encode"]
+        self.Rel_pos_encode = config["Rel_pos_encode"]
 
-        self.embed_layer2 = nn.Sequential(nn.Conv2d(emb_size*4, emb_size, kernel_size=[channel_size, 1], padding='valid'),
-                                          nn.BatchNorm2d(emb_size),
-                                          nn.GELU()).half()
+        # Use more memory-efficient group convolutions
+        groups = 4  # Adjust based on your needs
+        self.embed_layer = nn.Sequential(
+            nn.Conv2d(
+                1, emb_size * 4, kernel_size=[1, 8], padding="same", groups=groups
+            ),
+            nn.BatchNorm2d(emb_size * 4),
+            nn.GELU(),
+        )
 
-        if self.Fix_pos_encode == 'tAPE':
-            self.Fix_Position = tAPE(emb_size, dropout=config['dropout'], max_len=seq_len)
-        elif self.Fix_pos_encode == 'Sin':
-            self.Fix_Position = AbsolutePositionalEncoding(emb_size, dropout=config['dropout'], max_len=seq_len)
-        elif config['Fix_pos_encode'] == 'Learn':
-            self.Fix_Position = LearnablePositionalEncoding(emb_size, dropout=config['dropout'], max_len=seq_len)
+        self.embed_layer2 = nn.Sequential(
+            nn.Conv2d(
+                emb_size * 4,
+                emb_size,
+                kernel_size=[channel_size, 1],
+                padding="valid",
+                groups=groups,
+            ),
+            nn.BatchNorm2d(emb_size),
+            nn.GELU(),
+        )
 
-        if self.Rel_pos_encode == 'eRPE':
-            self.attention_layer = Attention_Rel_Scl(emb_size, num_heads, seq_len, config['dropout'])
-        elif self.Rel_pos_encode == 'Vector':
-            self.attention_layer = Attention_Rel_Vec(emb_size, num_heads, seq_len, config['dropout'])
+        # Initialize position encodings with memory efficiency in mind
+        if self.Fix_pos_encode == "tAPE":
+            self.Fix_Position = tAPE(
+                emb_size, dropout=config["dropout"], max_len=seq_len
+            )
+        elif self.Fix_pos_encode == "Sin":
+            self.Fix_Position = AbsolutePositionalEncoding(
+                emb_size, dropout=config["dropout"], max_len=seq_len
+            )
+        elif config["Fix_pos_encode"] == "Learn":
+            self.Fix_Position = LearnablePositionalEncoding(
+                emb_size, dropout=config["dropout"], max_len=seq_len
+            )
+
+        # Use attention with memory optimization
+        if self.Rel_pos_encode == "eRPE":
+            self.attention_layer = Attention_Rel_Scl(
+                emb_size, num_heads, seq_len, config["dropout"]
+            )
+        elif self.Rel_pos_encode == "Vector":
+            self.attention_layer = Attention_Rel_Vec(
+                emb_size, num_heads, seq_len, config["dropout"]
+            )
         else:
-            self.attention_layer = Attention(emb_size, num_heads, config['dropout'])
+            self.attention_layer = Attention(emb_size, num_heads, config["dropout"])
 
+        # Layer normalization and feedforward with gradient checkpointing
         self.LayerNorm = nn.LayerNorm(emb_size, eps=1e-5)
         self.LayerNorm2 = nn.LayerNorm(emb_size, eps=1e-5)
 
-        self.FeedForward = nn.Sequential(
+        self.feed_forward = nn.Sequential(
             nn.Linear(emb_size, dim_ff),
             nn.ReLU(),
-            nn.Dropout(config['dropout']),
+            nn.Dropout(config["dropout"]),
             nn.Linear(dim_ff, emb_size),
-            nn.Dropout(config['dropout']))
+            nn.Dropout(config["dropout"]),
+        )
 
         self.gap = nn.AdaptiveAvgPool1d(1)
         self.flatten = nn.Flatten()
         self.out = nn.Linear(emb_size, num_classes)
 
+    def _feed_forward_block(self, x):
+        return self.feed_forward(x)
+
+    @torch.cuda.amp.autocast()
     def forward(self, x):
-        print("Start forwarding")
-        
-        # Step 1: Unsqueeze and embed
-        x = x.unsqueeze(1)
-        x_src = self.embed_layer(x)
-        x_src = self.embed_layer2(x_src).squeeze(2)
-        x_src = x_src.permute(0, 2, 1)
-        
-        # Step 2: Position encoding and attention
-        if self.Fix_pos_encode != 'None':
-            x_src_pos = self.Fix_Position(x_src)
-            att = x_src + self.attention_layer(x_src_pos)
-            del x_src_pos  # Free memory
-        else:
-            att = x_src + self.attention_layer(x_src)
-        del x_src  # Free memory
-        
-        # Step 3: Layer normalization and feedforward
-        att = self.LayerNorm(att)
-        out = att + self.FeedForward(att)
-        del att  # Free memory
-        
-        # Step 4: Final layer normalization and output
-        out = self.LayerNorm2(out)
-        out = out.permute(0, 2, 1)
-        out = self.gap(out)
-        out = self.flatten(out)
-        out = self.out(out)
-        
-        # Clear GPU cache
-        torch.cuda.empty_cache()
-        
-        print("End forwarding")
-        return out
+        # Use mixed precision training
+        with torch.cuda.amp.autocast():
+            # Initial embedding
+            x = x.unsqueeze(1)
+            x_src = self.embed_layer(x)
+            x_src = self.embed_layer2(x_src).squeeze(2)
+            x_src = x_src.permute(0, 2, 1)
+
+            # Position encoding and attention with gradient checkpointing
+            if self.Fix_pos_encode != "None":
+                x_src_pos = self.Fix_Position(x_src)
+                att = x_src + torch.utils.checkpoint.checkpoint(
+                    self.attention_layer, x_src_pos
+                )
+            else:
+                att = x_src + torch.utils.checkpoint.checkpoint(
+                    self.attention_layer, x_src
+                )
+
+            # Layer norm and feedforward with gradient checkpointing
+            att = self.LayerNorm(att)
+            out = att + torch.utils.checkpoint.checkpoint(self._feed_forward_block, att)
+
+            # Final processing
+            out = self.LayerNorm2(out)
+            out = out.permute(0, 2, 1)
+            out = self.gap(out)
+            out = self.flatten(out)
+            out = self.out(out)
+
+            return out
 
 
 class CasualConvTran(nn.Module):
