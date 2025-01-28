@@ -111,11 +111,16 @@ class Attention_Rel_Scl(nn.Module):
                 attn_chunk = torch.matmul(q_chunk, k.transpose(-2, -1))
 
                 # Add relative position bias for the current chunk
-                rel_bias_chunk = self.relative_bias_table.gather(
-                    0, self.relative_index[i:end_idx].reshape(-1)
-                ).reshape(end_idx - i, seq_len, -1)
-                rel_bias_chunk = rel_bias_chunk.permute(2, 0, 1)
-                attn_chunk = attn_chunk + rel_bias_chunk.unsqueeze(0)
+                relative_bias = self.relative_bias_table.gather(
+                    0, self.relative_index[i * seq_len : (end_idx * seq_len)]
+                )
+                relative_bias = relative_bias.reshape(
+                    end_idx - i, seq_len, self.num_heads
+                )
+                relative_bias = relative_bias.permute(
+                    2, 0, 1
+                )  # [num_heads, chunk_size, seq_len]
+                attn_chunk = attn_chunk + relative_bias.unsqueeze(0)
 
                 attn_chunks.append(attn_chunk)
 
