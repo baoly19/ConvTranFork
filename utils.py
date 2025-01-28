@@ -71,7 +71,7 @@ def create_dirs(dirs):
 def Initialization(config):
     if config['seed'] is not None:
         torch.manual_seed(config['seed'])
-    device = torch.device('cuda' if (torch.cuda.is_available() and config['gpu'] != '-1') else 'mps')
+    device = torch.device('cuda' if (torch.cuda.is_available() and config['gpu'] != '-1') else 'cpu')
     # import torch_xla
     # import torch_xla.core.xla_model as xm
     
