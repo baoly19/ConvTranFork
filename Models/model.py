@@ -97,11 +97,11 @@ class ConvTran(nn.Module):
         # Embedding Layer -----------------------------------------------------------
         self.embed_layer = nn.Sequential(nn.Conv2d(1, emb_size*4, kernel_size=[1, 8], padding='same'),
                                          nn.BatchNorm2d(emb_size*4),
-                                         nn.GELU())
+                                         nn.GELU()).half()
 
         self.embed_layer2 = nn.Sequential(nn.Conv2d(emb_size*4, emb_size, kernel_size=[channel_size, 1], padding='valid'),
                                           nn.BatchNorm2d(emb_size),
-                                          nn.GELU())
+                                          nn.GELU()).half()
 
         if self.Fix_pos_encode == 'tAPE':
             self.Fix_Position = tAPE(emb_size, dropout=config['dropout'], max_len=seq_len)
