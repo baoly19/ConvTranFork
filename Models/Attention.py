@@ -104,52 +104,52 @@ class Attention_Rel_Scl(nn.Module):
         # Perform computation on each GPU
         results = []
         for i, x_split in enumerate(x_splits):
-            # with torch.mps.device(i):  # Switch to the appropriate GPU
-            k = (
-                self.key(x_split)
-                .reshape(x_split.size(0), seq_len, self.num_heads, -1)
-                .permute(0, 2, 3, 1)
-                .half()
-            )
-            v = (
-                self.value(x_split)
-                .reshape(x_split.size(0), seq_len, self.num_heads, -1)
-                .transpose(1, 2)
-            )
-            q = (
-                self.query(x_split)
-                .reshape(x_split.size(0), seq_len, self.num_heads, -1)
-                .transpose(1, 2)
-                .half()
-            )
+            with torch.mps.device(i):  # Switch to the appropriate GPU
+                k = (
+                    self.key(x_split)
+                    .reshape(x_split.size(0), seq_len, self.num_heads, -1)
+                    .permute(0, 2, 3, 1)
+                    .half()
+                )
+                v = (
+                    self.value(x_split)
+                    .reshape(x_split.size(0), seq_len, self.num_heads, -1)
+                    .transpose(1, 2)
+                )
+                q = (
+                    self.query(x_split)
+                    .reshape(x_split.size(0), seq_len, self.num_heads, -1)
+                    .transpose(1, 2)
+                    .half()
+                )
 
-            # Compute attention
-            attn = torch.matmul(q, k) * self.scale
-            attn = F.softmax(attn, dim=-1)
-            print(torch.mps.current_allocated_memory())
-            # Add relative bias
-            # self.relative_bias_table = nn.Parameter(
-            #     torch.zeros((2 * self.seq_len - 1), num_heads)
-            # )
-            # relative_bias = self.relative_bias_table.gather(
-            #     0, self.relative_index.repeat(1, self.num_heads)
-            # )
-            # relative_bias = rearrange(
-            #     relative_bias, "(h w) c -> 1 c h w", h=1 * self.seq_len, w=1 * self.seq_len
-            # )
-            
-            # Gather the relative bias using precomputed indices
-            indices = self.relative_index.unsqueeze(-1).expand(-1, self.num_heads)
-            relative_bias = self.relative_bias_table.gather(0, indices)
+                # Compute attention
+                attn = torch.matmul(q, k) * self.scale
+                attn = F.softmax(attn, dim=-1)
+                print(torch.cuda.memory_summary())
+                # Add relative bias
+                # self.relative_bias_table = nn.Parameter(
+                #     torch.zeros((2 * self.seq_len - 1), num_heads)
+                # )
+                # relative_bias = self.relative_bias_table.gather(
+                #     0, self.relative_index.repeat(1, self.num_heads)
+                # )
+                # relative_bias = rearrange(
+                #     relative_bias, "(h w) c -> 1 c h w", h=1 * self.seq_len, w=1 * self.seq_len
+                # )
 
-            # Reshape to desired format
-            relative_bias = relative_bias.view(1, self.num_heads, self.seq_len, self.seq_len)
-            print(torch.mps.current_allocated_memory())
+                # Gather the relative bias using precomputed indices
+                indices = self.relative_index.unsqueeze(-1).expand(-1, self.num_heads)
+                relative_bias = self.relative_bias_table.gather(0, indices)
 
-            attn += relative_bias
+                # Reshape to desired format
+                relative_bias = relative_bias.view(1, self.num_heads, self.seq_len, self.seq_len)
+                print(torch.cuda.memory_summary())
 
-            # Store the result on GPU i
-            results.append(attn.matmul(v))
+                attn += relative_bias
+
+                # Store the result on GPU i
+                results.append(attn.matmul(v))
 
         # Concatenate results from all GPUs
         output = torch.cat(results, dim=0)  # Combine along the batch dimension
