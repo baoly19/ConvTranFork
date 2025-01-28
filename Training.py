@@ -7,7 +7,6 @@ import time
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 import torch_xla as xla
-import torch_xla.core.xla_model as xm
 from Models.loss import l2_reg_loss
 from Models import utils, analysis
 
@@ -75,40 +74,39 @@ class SupervisedTrainer(BaseTrainer):
         total_samples = 0  # total samples in epoch
 
         for i, batch in enumerate(self.dataloader):
-            with xla.step():
-                X, targets, IDs = batch
-                targets = targets.to(self.device)
-                predictions = self.model(X.to(self.device))
 
-                loss = self.loss_module(predictions, targets)  # (batch_size,) loss for each sample in the batch
-                batch_loss = torch.sum(loss)
-                mean_loss = batch_loss / len(loss)  # mean loss (over samples) used for optimization
+            X, targets, IDs = batch
+            targets = targets.to(self.device)
+            predictions = self.model(X.to(self.device))
 
-                if self.l2_reg:
-                    total_loss = mean_loss + self.l2_reg * l2_reg_loss(self.model)
-                else:
-                    total_loss = mean_loss
+            loss = self.loss_module(predictions, targets)  # (batch_size,) loss for each sample in the batch
+            batch_loss = torch.sum(loss)
+            mean_loss = batch_loss / len(loss)  # mean loss (over samples) used for optimization
 
-                # Zero gradients, perform a backward pass, and update the weights.
-                self.optimizer.zero_grad()
-                total_loss.backward()
+            if self.l2_reg:
+                total_loss = mean_loss + self.l2_reg * l2_reg_loss(self.model)
+            else:
+                total_loss = mean_loss
 
-                # torch.nn.utils.clip_grad_value_(self.model.parameters(), clip_value=1.0)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=4.0)
-                xm.optimizer_step(self.optimizer)
-                # self.optimizer.step()
+            # Zero gradients, perform a backward pass, and update the weights.
+            self.optimizer.zero_grad()
+            total_loss.backward()
 
-                '''
-                metrics = {"loss": mean_loss.item()}
-                if i % self.print_interval == 0:
-                    ending = "" if epoch_num is None else 'Epoch {} '.format(epoch_num)
-                    self.print_callback(i, metrics, prefix='Training ' + ending)
-                '''
-                with torch.no_grad():
-                    total_samples += len(loss)
-                    epoch_loss += batch_loss.item()  # add total loss of batch
-                
-                # torch.cuda.empty_cache()
+            # torch.nn.utils.clip_grad_value_(self.model.parameters(), clip_value=1.0)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=4.0)
+            self.optimizer.step()
+
+            '''
+            metrics = {"loss": mean_loss.item()}
+            if i % self.print_interval == 0:
+                ending = "" if epoch_num is None else 'Epoch {} '.format(epoch_num)
+                self.print_callback(i, metrics, prefix='Training ' + ending)
+            '''
+            with torch.no_grad():
+                total_samples += len(loss)
+                epoch_loss += batch_loss.item()  # add total loss of batch
+            
+            # torch.cuda.empty_cache()
 
         epoch_loss = epoch_loss / total_samples  # average loss per sample for whole epoch
         self.epoch_metrics['epoch'] = epoch_num
@@ -140,8 +138,8 @@ class SupervisedTrainer(BaseTrainer):
 
             metrics = {"loss": mean_loss}
             # if i % self.print_interval == 0:
-                # ending = "" if epoch_num is None else 'Epoch {} '.format(epoch_num)
-                # self.print_callback(i, metrics, prefix='Evaluating ' + ending)
+            # ending = "" if epoch_num is None else 'Epoch {} '.format(epoch_num)
+            # self.print_callback(i, metrics, prefix='Evaluating ' + ending)
 
             total_samples += len(loss)
             epoch_loss += batch_loss  # add total loss of batch
