@@ -93,6 +93,8 @@ class Attention_Rel_Scl(nn.Module):
         # Perform computation on each GPU
         results = []
         attn = None
+        torch.autograd.set_detect_anomaly(True)
+
         for i, x_split in enumerate(x_splits):
             with torch.cuda.device(i):  # Switch to the appropriate GPU
                 k = (
