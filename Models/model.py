@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 from torch import nn
 from Models.AbsolutePositionalEncoding import tAPE, AbsolutePositionalEncoding, LearnablePositionalEncoding
 from Models.Attention import Attention, Attention_Rel_Scl, Attention_Rel_Vec
@@ -137,6 +138,7 @@ class ConvTran(nn.Module):
         x_src = x_src.permute(0, 2, 1)
         if self.Fix_pos_encode != 'None':
             x_src_pos = self.Fix_Position(x_src)
+            torch.cuda.empty_cache()
             att = x_src + self.attention_layer(x_src_pos)
         else:
             att = x_src + self.attention_layer(x_src)
