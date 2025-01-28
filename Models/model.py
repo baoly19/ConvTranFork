@@ -139,7 +139,6 @@ class ConvTran(nn.Module):
         x_src = x_src.permute(0, 2, 1)
         if self.Fix_pos_encode != 'None':
             x_src_pos = self.Fix_Position(x_src)
-            torch.cuda.empty_cache()
             att = x_src + self.attention_layer(x_src_pos)
         else:
             att = x_src + self.attention_layer(x_src)
@@ -150,6 +149,7 @@ class ConvTran(nn.Module):
         out = self.gap(out)
         out = self.flatten(out)
         out = self.out(out)
+        torch.cuda.empty_cache()
         print("End fowarding")
         return out
 
