@@ -125,7 +125,7 @@ class Attention_Rel_Scl(nn.Module):
                     relative_bias, "(h w) c -> 1 c h w", h=1 * self.seq_len, w=1 * self.seq_len
                 )
                 # Clone `attn` before modifying it inplace
-                attn += relative_bias  # Safe inplace modification
+                attn = attn + relative_bias  # Safe inplace modification
 
                 # Store the result on GPU i
                 results.append(attn.matmul(v))
