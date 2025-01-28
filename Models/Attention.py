@@ -131,12 +131,12 @@ class Attention_Rel_Scl(nn.Module):
 
         # out = torch.matmul(attn, v)
         # # out.shape = (batch_size, num_heads, seq_len, d_head)
-        # out = out.transpose(1, 2)
+        out = output.transpose(1, 2)
         # # out.shape == (batch_size, seq_len, num_heads, d_head)
-        # out = out.reshape(batch_size, seq_len, -1)
+        out = out.reshape(batch_size, seq_len, -1)
         # # out.shape == (batch_size, seq_len, d_model)
-        # out = self.to_out(out)
-        return output
+        out = self.to_out(out)
+        return out
 
 
 class Attention_Rel_Vec(nn.Module):
