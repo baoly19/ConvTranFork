@@ -74,14 +74,12 @@ class Attention_Rel_Scl(nn.Module):
         )
 
         # Pre-compute relative position indices
-        coords = torch.meshgrid(
-            torch.arange(seq_len), torch.arange(seq_len), indexing="ij"
-        )
-        coords = torch.stack(coords)
-        relative_coords = coords.unsqueeze(2) - coords.unsqueeze(1)
-        relative_coords[0] += seq_len - 1
-        relative_coords = relative_coords.permute(1, 2, 0)
-        relative_index = relative_coords.sum(-1)
+        coords = torch.meshgrid((torch.arange(1), torch.arange(self.seq_len)))
+        coords = torch.flatten(torch.stack(coords), 1)
+        relative_coords = coords[:, :, None] - coords[:, None, :]
+        relative_coords[1] += self.seq_len - 1
+        relative_coords = rearrange(relative_coords, "c h w -> h w c")
+        relative_index = relative_coords.sum(-1).flatten().unsqueeze(1)
         self.register_buffer("relative_index", relative_index)
 
         self.dropout = nn.Dropout(dropout)
