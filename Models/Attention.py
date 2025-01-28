@@ -62,92 +62,79 @@ class Attention_Rel_Scl(nn.Module):
         super().__init__()
         self.seq_len = seq_len
         self.num_heads = num_heads
-        self.scale = emb_size**-0.5
-        # self.to_qkv = nn.Linear(inp, inner_dim * 3, bias=False)
-        self.key = nn.Linear(emb_size, emb_size, bias=False)
-        self.value = nn.Linear(emb_size, emb_size, bias=False)
-        self.query = nn.Linear(emb_size, emb_size, bias=False)
+        self.head_dim = emb_size // num_heads
+        self.scale = self.head_dim**-0.5
 
+        # Combine QKV projections into a single linear layer
+        self.qkv = nn.Linear(emb_size, emb_size * 3, bias=False)
+
+        # Initialize relative position bias table
         self.relative_bias_table = nn.Parameter(
-            torch.zeros((2 * self.seq_len - 1), num_heads)
+            torch.zeros((2 * seq_len - 1), num_heads)
         )
-        coords = torch.meshgrid((torch.arange(1), torch.arange(self.seq_len)))
-        coords = torch.flatten(torch.stack(coords), 1)
-        relative_coords = coords[:, :, None] - coords[:, None, :]
-        relative_coords[1] += self.seq_len - 1
-        relative_coords = rearrange(relative_coords, "c h w -> h w c")
-        relative_index = relative_coords.sum(-1).flatten().unsqueeze(1)
+
+        # Pre-compute relative position indices
+        coords = torch.meshgrid(
+            torch.arange(seq_len), torch.arange(seq_len), indexing="ij"
+        )
+        coords = torch.stack(coords)
+        relative_coords = coords.unsqueeze(2) - coords.unsqueeze(1)
+        relative_coords[0] += seq_len - 1
+        relative_coords = relative_coords.permute(1, 2, 0)
+        relative_index = relative_coords.sum(-1)
         self.register_buffer("relative_index", relative_index)
 
         self.dropout = nn.Dropout(dropout)
         self.to_out = nn.LayerNorm(emb_size)
 
     def forward(self, x):
-        # Assume `self.device` is set up for multiple GPUs (e.g., `cuda:0` and `cuda:1`)
-
         batch_size, seq_len, _ = x.shape
 
-        # Scatter input across GPUs
-        x_splits = torch.chunk(x, 2, dim=0)  # Split along batch dimension (dim=0)
-        print("N x+splits:", len(x_splits))
-        # Perform computation on each GPU
-        results = []
-        attn = None
-        torch.autograd.set_detect_anomaly(True)
+        # Compute Q, K, V in a single matrix multiplication
+        qkv = self.qkv(x).chunk(3, dim=-1)
+        q, k, v = map(
+            lambda t: rearrange(t, "b n (h d) -> b h n d", h=self.num_heads), qkv
+        )
 
-        for i, x_split in enumerate(x_splits):
-            with torch.cuda.device(i):  # Switch to the appropriate GPU
-                k = (
-                    self.key(x_split)
-                    .reshape(x_split.size(0), seq_len, self.num_heads, -1)
-                    .permute(0, 2, 3, 1)
-                )
-                v = (
-                    self.value(x_split)
-                    .reshape(x_split.size(0), seq_len, self.num_heads, -1)
-                    .transpose(1, 2)
-                )
-                q = (
-                    self.query(x_split)
-                    .reshape(x_split.size(0), seq_len, self.num_heads, -1)
-                    .transpose(1, 2)
-                )
+        # Scale query
+        q = q * self.scale
 
-                # Compute attention
-                attn = torch.matmul(q, k) * self.scale
-                attn = F.softmax(attn, dim=-1)
+        # Compute attention scores with improved memory efficiency
+        with torch.cuda.amp.autocast(enabled=True):
+            # Compute attention scores in chunks if sequence length is large
+            chunk_size = 128  # Adjust based on available GPU memory
+            attn_chunks = []
 
-                # Add relative bias
-                relative_bias = self.relative_bias_table.gather(
-                    0, self.relative_index.repeat(1, self.num_heads)
-                )
-                relative_bias = rearrange(
-                    relative_bias, "(h w) c -> 1 c h w", h=1 * self.seq_len, w=1 * self.seq_len
-                )
-                # Clone `attn` before modifying it inplace
-                attn = attn + relative_bias  # Safe inplace modification
+            for i in range(0, seq_len, chunk_size):
+                end_idx = min(i + chunk_size, seq_len)
+                q_chunk = q[:, :, i:end_idx]
 
-                # Store the result on GPU i
-                results.append(attn.matmul(v))
+                # Compute attention scores for the current chunk
+                attn_chunk = torch.matmul(q_chunk, k.transpose(-2, -1))
 
-                # Clean up intermediate tensors
-                del attn, relative_bias
-                torch.cuda.empty_cache()
-                gc.collect()
-        # Concatenate results from all GPUs
-        output = torch.cat(results, dim=0)  # Combine along the batch dimension
-        del results
-        torch.cuda.empty_cache()
-        # # distance_pd = pd.DataFrame(relative_bias[0,0,:,:].cpu().detach().numpy())
-        # # distance_pd.to_csv('scalar_position_distance.csv')
+                # Add relative position bias for the current chunk
+                rel_bias_chunk = self.relative_bias_table.gather(
+                    0, self.relative_index[i:end_idx].reshape(-1)
+                ).reshape(end_idx - i, seq_len, -1)
+                rel_bias_chunk = rel_bias_chunk.permute(2, 0, 1)
+                attn_chunk = attn_chunk + rel_bias_chunk.unsqueeze(0)
 
-        # out = torch.matmul(attn, v)
-        # # out.shape = (batch_size, num_heads, seq_len, d_head)
-        out = output.transpose(1, 2)
-        # # out.shape == (batch_size, seq_len, num_heads, d_head)
-        out = out.reshape(batch_size, seq_len, -1)
-        # # out.shape == (batch_size, seq_len, d_model)
+                attn_chunks.append(attn_chunk)
+
+            # Concatenate chunks
+            attn = torch.cat(attn_chunks, dim=2)
+
+            # Apply softmax
+            attn = F.softmax(attn, dim=-1)
+            attn = self.dropout(attn)
+
+            # Compute output
+            out = torch.matmul(attn, v)
+
+        # Reshape and apply output transformation
+        out = rearrange(out, "b h n d -> b n (h d)")
         out = self.to_out(out)
+
         return out
 
 
