@@ -30,9 +30,21 @@ parser.add_argument('--print_interval', type=int, default=10, help='Print batch 
 parser.add_argument('--Net_Type', default=['C-T'], choices={'T', 'C-T'}, help="Network Architecture. Convolution (C)"
                                                                               "Transformers (T)")
 # Transformers Parameters ------------------------------
-parser.add_argument('--emb_size', type=int, default=8, help='Internal dimension of transformer embeddings')
-parser.add_argument('--dim_ff', type=int, default=64, help='Dimension of dense feedforward part of transformer layer')
-parser.add_argument('--num_heads', type=int, default=2, help='Number of multi-headed attention heads')
+parser.add_argument(
+    "--emb_size",
+    type=int,
+    default=64,
+    help="Internal dimension of transformer embeddings",
+)
+parser.add_argument(
+    "--dim_ff",
+    type=int,
+    default=256,
+    help="Dimension of dense feedforward part of transformer layer",
+)
+parser.add_argument(
+    "--num_heads", type=int, default=8, help="Number of multi-headed attention heads"
+)
 
 # parser.add_argument(
 #     "--emb_size",
